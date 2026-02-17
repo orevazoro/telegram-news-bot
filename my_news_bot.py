@@ -6,54 +6,67 @@ import datetime
 BOT_TOKEN = "8310057826:AAEl5s5eTXzUDGTzY29hUyVeCrqTf9YsAe0"
 CHAT_ID = "5888003647"
 
-# --- HEADERS (To look like a real Chrome browser) ---
+# --- DIRECT CATEGORY LINKS ---
+# These pages list all the papers chronologically. The first one is today's.
+PAPERS = [
+    {
+        "name": "Times of India",
+        "url": "https://epaperwave.com/category/times-of-india-epaper/"
+    },
+    {
+        "name": "Orissa Post",
+        "url": "https://epaperwave.com/category/orissa-post/"
+    }
+]
+
+# --- HEADERS ---
+# Essential to stop the website from blocking the bot
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Referer': 'https://google.com'
 }
 
-def get_latest_link(paper_name, search_query):
-    """
-    Searches the website and returns the link to the very first result.
-    """
-    search_url = f"https://epaperwave.com/?s={search_query}"
-    
+def get_latest_post_from_category(paper_name, category_url):
     try:
-        # 1. Search the website
-        response = requests.get(search_url, headers=HEADERS)
+        response = requests.get(category_url, headers=HEADERS)
+        response.raise_for_status() # Check for errors (404, 500)
+        
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # 2. Find the first article title
-        # (Standard WordPress search results usually use 'entry-title')
-        article = soup.find(['h2', 'h3'], class_='entry-title')
+        # 1. Find the first article in the list
+        # WordPress category pages usually list posts in <article> tags or divs with class 'post'
+        # We look for the first 'h2' inside the main loop
         
-        if article and article.find('a'):
-            link = article.find('a')['href']
-            title = article.get_text().strip()
+        # Try finding the standard "entry-title" which contains the link
+        latest_post = soup.find('h2', class_='entry-title')
+        
+        # Fallback: specific to some themes
+        if not latest_post:
+            latest_post = soup.find('h3', class_='entry-title')
+
+        if latest_post and latest_post.find('a'):
+            link = latest_post.find('a')['href']
+            title = latest_post.get_text().strip()
             
-            # 3. Create a clean message
-            return f"📰 **{title}**\n🔗 [Click to Open Page]({link})"
+            return f"📰 **{title}**\n🔗 [Open Today's Paper]({link})"
         else:
-            return f"⚠️ **{paper_name}**: Could not find the latest post."
+            return f"⚠️ **{paper_name}**: Found the category page, but couldn't find the latest post link. Website structure might be hidden."
 
     except Exception as e:
-        return f"❌ Error fetching {paper_name}: {e}"
+        return f"❌ Error checking {paper_name}: {e}"
 
 def send_telegram():
     today = datetime.date.today().strftime("%d %B %Y")
+    messages = [f"🗓 **Newspaper Link Delivery: {today}**\n"]
     
-    # Start the message
-    messages = [f"🗓 **Newspaper Delivery: {today}**\n"]
-    
-    # Get Times of India
-    messages.append(get_latest_link("Times of India", "times+of+india"))
-    
-    # Get Orissa Post
-    messages.append(get_latest_link("Orissa Post", "orissa+post"))
+    for paper in PAPERS:
+        msg = get_latest_post_from_category(paper['name'], paper['url'])
+        messages.append(msg)
 
-    # Join them together
     final_message = "\n\n".join(messages)
 
-    # Send to Telegram
     send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,

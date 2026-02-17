@@ -1,61 +1,68 @@
 import requests
 from bs4 import BeautifulSoup
+import datetime
 
-# --- YOUR CREDENTIALS (ALREADY FILLED) ---
+# --- YOUR CREDENTIALS ---
 BOT_TOKEN = "8310057826:AAEl5s5eTXzUDGTzY29hUyVeCrqTf9YsAe0"
 CHAT_ID = "5888003647"
 
-# --- NEWSPAPER SOURCE ---
-# We are using Times of India Headlines
-URL = "https://timesofindia.indiatimes.com/home/headlines"
+# --- CONFIGURATION ---
+# We search specifically for these papers
+PAPERS = [
+    {"name": "Times of India", "search_url": "https://epaperwave.com/?s=times+of+india"},
+    {"name": "Orissa Post", "search_url": "https://epaperwave.com/?s=orissa+post"}
+]
 
-def get_news():
+def get_latest_paper_link(paper_name, search_url):
+    """
+    Searches the website and returns the first (latest) link found.
+    """
     try:
-        # 1. Fake a browser visit (so the website doesn't block us)
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        response = requests.get(URL, headers=headers)
+        response = requests.get(search_url, headers=headers)
         response.raise_for_status()
 
-        # 2. Parse the HTML
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # 3. Find the top headlines
-        # TOI usually puts headlines in a standard list. We will grab the top 3.
-        news_list = []
+        # This selector finds the main article titles on most WordPress sites (like epaperwave)
+        # We look for the first 'h2' or 'h3' that contains a link
+        article = soup.find(['h2', 'h3'], class_='entry-title')
         
-        # This finds all links that look like headlines
-        headlines = soup.find_all('span', class_='w_tle') # specific class for TOI headlines
-        
-        # If the specific class changes (websites update often), fallback to H1/H2
-        if not headlines:
-            headlines = soup.find_all(['h1', 'h2'])
+        # If standard WordPress class not found, try generic search for first link inside main area
+        if not article:
+             article = soup.find('h2') # Fallback
 
-        # Get the top 3 stories
-        for item in headlines[:3]:
-            text = item.get_text().strip()
-            if len(text) > 10: # Ignore empty or tiny headings
-                news_list.append(f"📰 {text}")
-
-        # Join them into one message
-        if news_list:
-            final_message = "🇮🇳 **Good Morning! Top Headlines:**\n\n" + "\n\n".join(news_list) + f"\n\n🔗 [Read More]({URL})"
-            return final_message
+        if article and article.find('a'):
+            link = article.find('a')['href']
+            title = article.get_text().strip()
+            return f"✅ **{paper_name}**\n{title}\n🔗 [Click to Download]({link})"
         else:
-            return "Could not find headlines today. The website structure might have changed."
+            return f"⚠️ **{paper_name}**: Could not find latest link."
 
     except Exception as e:
-        return f"⚠️ Error fetching news: {e}"
+        return f"❌ Error fetching {paper_name}: {e}"
 
 def send_telegram():
-    news_text = get_news()
+    # Get current date for the header
+    today = datetime.date.today().strftime("%d %B %Y")
     
+    messages = [f"🗞 **Newspaper Delivery: {today}**\n"]
+    
+    # Loop through our list of papers and get links for each
+    for paper in PAPERS:
+        result = get_latest_paper_link(paper['name'], paper['search_url'])
+        messages.append(result)
+
+    # Join all messages with a separator
+    final_message = "\n\n".join(messages)
+
     # Send to Telegram
     send_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
-        "text": news_text,
+        "text": final_message,
         "parse_mode": "Markdown"
     }
     requests.post(send_url, json=payload)

@@ -1,0 +1,28 @@
+name: Daily News Bot
+
+on:
+  schedule:
+    # 00:30 UTC is 6:00 AM IST (India Standard Time)
+    - cron: '30 0 * * *'
+  # This allows you to run it manually to test it
+  workflow_dispatch:
+
+jobs:
+  run_bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Install libraries
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Run the bot
+        run: python news_bot.py
